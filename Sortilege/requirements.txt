@@ -1,0 +1,9 @@
+# Sortilege runtime: Python standard library only (the copy of Python
+# embedded in UEFN). Nothing to install for normal use.
+#
+# The optional preview window uses tkinter, which ships with UEFN's
+# embedded Python when available; Sortilege falls back to the console
+# preview automatically when it is not.
+#
+# Running the test suite (not needed to use the tool):
+#   python -m pytest Sortilege/tests/   (or: python -m unittest discover -s Sortilege/tests)
