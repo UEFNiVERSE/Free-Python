@@ -27,7 +27,7 @@ body:
       label: Related Tool (if applicable)
       description: Which tool is this feature for?
       options:
-        # Add tools here as they are released
+        - Sortilege - Content Drawer Sorter
         - New tool concept
         - Multiple tools
         - Not applicable

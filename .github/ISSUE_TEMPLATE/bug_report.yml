@@ -14,7 +14,7 @@ body:
       label: Which tool is affected?
       description: Select the tool experiencing the issue
       options:
-        # Add tools here as they are released
+        - Sortilege - Content Drawer Sorter
         - General / Setup
         - Multiple tools
         - Not sure

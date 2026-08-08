@@ -16,7 +16,7 @@ body:
       label: Which tool is this about?
       description: Select the tool you need help with
       options:
-        # Add tools here as they are released
+        - Sortilege - Content Drawer Sorter
         - General / Setup
         - Multiple tools
         - Not sure
