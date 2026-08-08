@@ -1308,5 +1308,131 @@ class GuiCloseDuringRunGuardTests(unittest.TestCase):
         self.assertFalse(root.winfo_exists())
 
 
+# ---------------------------------------------------------------------------
+# Dark mode -- CONFIG["DARK_MODE"] theming seam
+# ---------------------------------------------------------------------------
+# The minimal fakes above deliberately have NO option_add() and NO
+# ttk.Style -- every GuiShellSeamTests build therefore already proves the
+# fail-soft path (dark mode on, nothing themeable, window still builds).
+# These tests add the other half: recording fakes that prove the dark
+# palette IS pushed through option_add()/Style when the tk build offers
+# them, and is NOT pushed when DARK_MODE is off.
+
+class _RecordingTk(_FakeTk):
+    def __init__(self, *args, **kwargs):
+        _FakeTk.__init__(self, *args, **kwargs)
+        self.option_adds = []
+        self.configure_calls = []
+
+    def option_add(self, pattern, value):
+        self.option_adds.append((pattern, value))
+
+    def configure(self, **kwargs):
+        self.configure_calls.append(kwargs)
+
+
+class _RecordingStyle(object):
+    instances = []
+
+    def __init__(self, master=None):
+        self.master = master
+        self.theme = None
+        self.configured = {}
+        self.mapped = {}
+        _RecordingStyle.instances.append(self)
+
+    def theme_use(self, name):
+        self.theme = name
+
+    def configure(self, name, **opts):
+        self.configured.setdefault(name, {}).update(opts)
+
+    def map(self, name, **opts):
+        self.mapped.setdefault(name, {}).update(opts)
+
+
+def _make_recording_modules():
+    fake_tk = _make_fake_tk_module()
+    fake_tk.Tk = _RecordingTk
+    fake_ttk = _make_fake_ttk_module()
+    fake_ttk.Style = _RecordingStyle
+    return fake_tk, fake_ttk
+
+
+class DarkModeTests(unittest.TestCase):
+    def setUp(self):
+        self.sortilege = helpers.load_sortilege()
+        self.sortilege._GUI_ROOT = None
+        _RecordingStyle.instances = []
+
+    def _plan(self):
+        mock_unreal.add_asset("/Game/Stuff/Rock", "StaticMesh")
+        assets = [asset("/Game/Stuff/Rock", "StaticMesh")]
+        caps = self.sortilege.probe_capabilities()
+        plan = self.sortilege.build_plan(assets, self.sortilege.CONFIG, caps)
+        return plan, caps
+
+    def test_dark_mode_defaults_on(self):
+        self.assertTrue(self.sortilege.CONFIG.get("DARK_MODE"))
+
+    def test_dark_palette_applied_when_build_supports_styling(self):
+        self.sortilege.CONFIG["DARK_MODE"] = True
+        plan, caps = self._plan()
+        fake_tk, fake_ttk = _make_recording_modules()
+
+        handles = self.sortilege._build_preview_window(
+            fake_tk, fake_ttk, _FakeMessagebox, plan, caps)
+
+        root = handles["root"]
+        dark = self.sortilege._DARK_COLORS
+        # Classic-tk half: root recolored + option database seeded
+        # (BEFORE widget creation, though these fakes can't prove order).
+        self.assertIn({"bg": dark["bg"]}, root.configure_calls)
+        self.assertIn(("*Background", dark["bg"]), root.option_adds)
+        self.assertIn(("*Entry.background", dark["field"]), root.option_adds)
+        # ttk half: Style built on this root, clam theme, Treeview dark.
+        self.assertTrue(_RecordingStyle.instances)
+        style = _RecordingStyle.instances[0]
+        self.assertIs(style.master, root)
+        self.assertEqual(style.theme, "clam")
+        self.assertEqual(
+            style.configured["Treeview"]["fieldbackground"], dark["field"])
+        self.assertIn("TNotebook.Tab", style.mapped)
+
+    def test_no_theming_when_dark_mode_off(self):
+        self.sortilege.CONFIG["DARK_MODE"] = False
+        plan, caps = self._plan()
+        fake_tk, fake_ttk = _make_recording_modules()
+
+        self.sortilege._build_preview_window(
+            fake_tk, fake_ttk, _FakeMessagebox, plan, caps)
+
+        self.assertEqual(self.sortilege._GUI_ROOT.option_adds, [])
+        self.assertEqual(_RecordingStyle.instances, [])
+
+    def test_window_builds_when_styling_hooks_are_missing(self):
+        # Dark mode ON against the minimal fakes (no option_add(), no
+        # ttk.Style attribute at all): cosmetics must be skipped, never
+        # fatal -- the explicit version of what every other GUI test
+        # already relies on implicitly.
+        self.sortilege.CONFIG["DARK_MODE"] = True
+        plan, caps = self._plan()
+        fake_tk = _make_fake_tk_module()
+        fake_ttk = _make_fake_ttk_module()
+
+        handles = self.sortilege._build_preview_window(
+            fake_tk, fake_ttk, _FakeMessagebox, plan, caps)  # must not raise
+
+        self.assertIsNotNone(handles["root"])
+
+    def test_error_label_color_follows_theme(self):
+        self.sortilege.CONFIG["DARK_MODE"] = True
+        self.assertEqual(
+            self.sortilege._theme_error_fg(),
+            self.sortilege._DARK_COLORS["error"])
+        self.sortilege.CONFIG["DARK_MODE"] = False
+        self.assertEqual(self.sortilege._theme_error_fg(), "red")
+
+
 if __name__ == "__main__":
     unittest.main()

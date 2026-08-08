@@ -146,6 +146,13 @@ CONFIG = {
     # any reason. Set this to False (non-coders: change True to False
     # above) to always use the console-only flow.
     "USE_GUI": True,
+    # True (default) = draw the preview window in dark colors, matching
+    # UEFN's own dark editor theme. Set this to False for the plain
+    # system-default (light) look. Purely cosmetic: every control works
+    # identically either way, and on tk builds that reject any part of
+    # the styling the window simply keeps its default colors for that
+    # part instead of failing.
+    "DARK_MODE": True,
     # Crash-diagnostics switch. True = an apply (or undo) only MOVES the
     # assets -- every optional pass after that (soft-reference fixup,
     # redirector cleanup, empty-folder sweep) and every collect_garbage()
@@ -4200,6 +4207,131 @@ _GUI_ROOT = None
 
 _PREVIEW_WINDOW_TITLE = "Sortilege - dry run preview"
 
+# Dark-mode palette (CONFIG["DARK_MODE"], on by default): picked to sit
+# comfortably next to UEFN's own dark editor chrome. One place to tweak.
+_DARK_COLORS = {
+    "bg": "#1e1f22",         # window + tab-page background
+    "panel": "#2b2d30",      # raised surfaces: buttons, tab strip, headings
+    "field": "#313438",      # input surfaces: entries, treeview rows
+    "fg": "#dfe1e5",         # primary text
+    "muted": "#9da0a8",      # disabled text
+    "select_bg": "#2e436e",  # treeview selection
+    "border": "#43454a",
+    "error": "#ff6b6b",      # softer than pure red against a dark bg
+}
+
+
+def _theme_error_fg():
+    """The fg color for error labels: softened red on the dark theme,
+    classic "red" on the default (light) look."""
+    if CONFIG.get("DARK_MODE", True):
+        return _DARK_COLORS["error"]
+    return "red"
+
+
+def _apply_dark_mode(tk, ttk, root):
+    """Best-effort dark theming for the preview window. No-op when
+    CONFIG["DARK_MODE"] is False.
+
+    Two mechanisms, because classic-tk and ttk widgets color differently:
+
+    - Classic tk widgets (Label/Button/Entry/Checkbutton/Radiobutton/
+      Frame) read the option database AT CREATION TIME, so this must run
+      before _build_preview_window() creates any of them (it does: right
+      after the singleton root is cleared). Covers the results bar's
+      late-created widgets too -- they are also created after this.
+    - ttk widgets ignore the option database entirely; they get a
+      ttk.Style pass instead. theme_use("clam") first, because the
+      default OS themes ignore background/fieldbackground configure()
+      on several widget classes (research: native-drawn elements).
+
+    Every step is individually fail-soft, same policy as the rest of
+    this GUI: embedded-tk builds missing option_add(), Style, or any
+    single option must never lose the window over cosmetics -- whatever
+    cannot be styled just keeps its default colors. The test-suite's
+    minimal fake tk/ttk stubs (no option_add, no Style) exercise
+    exactly that path."""
+    if not CONFIG.get("DARK_MODE", True):
+        return
+    c = _DARK_COLORS
+    try:
+        root.configure(bg=c["bg"])
+    except Exception:
+        pass
+    for pattern, value in (
+        ("*Background", c["bg"]),
+        ("*Foreground", c["fg"]),
+        ("*Frame.background", c["bg"]),
+        ("*Label.background", c["bg"]),
+        ("*Label.foreground", c["fg"]),
+        ("*Button.background", c["panel"]),
+        ("*Button.foreground", c["fg"]),
+        ("*Button.activeBackground", c["field"]),
+        ("*Button.activeForeground", c["fg"]),
+        ("*Entry.background", c["field"]),
+        ("*Entry.foreground", c["fg"]),
+        ("*Entry.insertBackground", c["fg"]),
+        ("*Checkbutton.background", c["bg"]),
+        ("*Checkbutton.foreground", c["fg"]),
+        ("*Checkbutton.activeBackground", c["bg"]),
+        ("*Checkbutton.activeForeground", c["fg"]),
+        ("*Checkbutton.selectColor", c["field"]),
+        ("*Radiobutton.background", c["bg"]),
+        ("*Radiobutton.foreground", c["fg"]),
+        ("*Radiobutton.activeBackground", c["bg"]),
+        ("*Radiobutton.activeForeground", c["fg"]),
+        ("*Radiobutton.selectColor", c["field"]),
+    ):
+        try:
+            root.option_add(pattern, value)
+        except Exception:
+            pass
+    try:
+        style = ttk.Style(root)
+        try:
+            style.theme_use("clam")
+        except Exception:
+            pass
+        for name, opts in (
+            (".", dict(background=c["bg"], foreground=c["fg"],
+                       fieldbackground=c["field"], bordercolor=c["border"],
+                       troughcolor=c["bg"], arrowcolor=c["fg"])),
+            ("TFrame", dict(background=c["bg"])),
+            ("TNotebook", dict(background=c["bg"], borderwidth=0)),
+            ("TNotebook.Tab", dict(background=c["panel"], foreground=c["fg"],
+                                   padding=(10, 4))),
+            ("Treeview", dict(background=c["field"], foreground=c["fg"],
+                              fieldbackground=c["field"],
+                              bordercolor=c["border"])),
+            ("Treeview.Heading", dict(background=c["panel"],
+                                      foreground=c["fg"])),
+            ("TButton", dict(background=c["panel"], foreground=c["fg"])),
+            ("TCheckbutton", dict(background=c["bg"], foreground=c["fg"])),
+            ("Vertical.TScrollbar", dict(background=c["panel"],
+                                         troughcolor=c["bg"],
+                                         arrowcolor=c["fg"])),
+        ):
+            try:
+                style.configure(name, **opts)
+            except Exception:
+                pass
+        for name, opts in (
+            ("TNotebook.Tab", dict(background=[("selected", c["field"])])),
+            ("Treeview", dict(background=[("selected", c["select_bg"])],
+                              foreground=[("selected", c["fg"])])),
+            ("Treeview.Heading", dict(background=[("active", c["field"])])),
+            ("TButton", dict(background=[("active", c["field"]),
+                                         ("disabled", c["panel"])],
+                             foreground=[("disabled", c["muted"])])),
+            ("TCheckbutton", dict(background=[("active", c["bg"])])),
+        ):
+            try:
+                style.map(name, **opts)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
 
 def apply_folder_map_edits(config, edits):
     """Validate and apply GUI-edited FOLDER_MAP / SORT_ROOT values onto
@@ -4342,6 +4474,10 @@ def _build_preview_window(tk, ttk, messagebox, plan, caps):
                 pass
     except Exception:
         pass
+
+    # Theme BEFORE any widget below is created: classic-tk widgets read
+    # the option database at creation time (see _apply_dark_mode()).
+    _apply_dark_mode(tk, ttk, root)
 
     # "busy" is the in-flight guard: True for exactly as long as the
     # apply or undo pipeline is running. _on_close() refuses to destroy
@@ -4533,7 +4669,8 @@ def _build_preview_window(tk, ttk, messagebox, plan, caps):
     safe_mode_checkbox.grid(row=row_index[0], column=0, columnspan=2, sticky="w", padx=4, pady=2)
     row_index[0] += 1
 
-    mapping_error_label = tk.Label(mapping_frame, textvariable=mapping_error_var, fg="red")
+    mapping_error_label = tk.Label(
+        mapping_frame, textvariable=mapping_error_var, fg=_theme_error_fg())
     mapping_error_label.grid(row=row_index[0], column=0, columnspan=2, sticky="w", padx=4, pady=2)
     row_index[0] += 1
 
@@ -4707,7 +4844,8 @@ def _build_preview_window(tk, ttk, messagebox, plan, caps):
     close_button = tk.Button(controls_frame, text="Close")
     close_button.pack(side="right")
 
-    error_label = tk.Label(bottom_frame, textvariable=error_var, fg="red")
+    error_label = tk.Label(
+        bottom_frame, textvariable=error_var, fg=_theme_error_fg())
     error_label.pack(fill="x")
 
     # Signal 2: variable trace (modern spelling first, legacy fallback).
