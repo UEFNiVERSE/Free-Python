@@ -579,11 +579,15 @@ class ApplyAndUndoVerseEditsTests(unittest.TestCase):
     def test_undo_with_unreadable_index_fails_soft(self):
         result = self.sortilege.undo_verse_edits(
             os.path.join(self.tmp_dir, "does_not_exist.json"))
-        self.assertEqual(result, {"restored": [], "failed": []})
+        self.assertEqual(result, {"restored": [], "failed": [],
+                                  "skipped_modified": [],
+                                  "pre_undo_backup_dir": None})
 
     def test_undo_with_falsy_path_fails_soft(self):
         self.assertEqual(self.sortilege.undo_verse_edits(None),
-                          {"restored": [], "failed": []})
+                          {"restored": [], "failed": [],
+                           "skipped_modified": [],
+                           "pre_undo_backup_dir": None})
 
 
 # ---------------------------------------------------------------------------

@@ -224,6 +224,7 @@ except ImportError:
           "Output Log in Cmd mode: py \"path/to/sortilege.py\").")
 
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -1099,9 +1100,17 @@ def build_plan(assets, config, caps):
         plan["verse_search_dir"] = verse_dir
         plan["verse_files_count"] = len(verse_files)
         if moves and verse_files:
+            # Folders that will still hold at least one asset after this
+            # plan runs (every skipped asset stays put) -- their using-
+            # statements must never be rewritten. See build_verse_edits().
+            occupied = {
+                s["path"].rsplit("/", 1)[0]
+                for s in plan.get("skips", []) if "/" in s.get("path", "")
+            }
             plan["verse_edits"] = build_verse_edits(
                 moves, verse_files, all_roots_norm,
-                fix_bare_names=config.get("FIX_VERSE_BARE_NAMES", True))
+                fix_bare_names=config.get("FIX_VERSE_BARE_NAMES", True),
+                occupied_folders=occupied)
 
     return plan
 
@@ -1349,7 +1358,8 @@ def _verse_ref_pattern(old_ref):
 _USING_STATEMENT_RE = re.compile(r"using\s*\{\s*(\S+?)\s*\}")
 
 
-def build_verse_edits(plan_moves, verse_files, content_roots, fix_bare_names=True):
+def build_verse_edits(plan_moves, verse_files, content_roots, fix_bare_names=True,
+                      occupied_folders=None):
     """Compute every Verse-source edit needed to keep `.verse` code
     compiling after `plan_moves` relocates assets referenced by folder-
     qualified name (Asset Reflection). `plan_moves` is build_plan()'s
@@ -1388,7 +1398,12 @@ def build_verse_edits(plan_moves, verse_files, content_roots, fix_bare_names=Tru
     level old->new mapping is only derived when EVERY move sharing that
     old folder agrees on the very same new folder; a folder whose
     contents scattered to two or more destinations in this run is left
-    out entirely rather than guessed at. Even then, a using-line is only
+    out entirely rather than guessed at. `occupied_folders` (a set of
+    folder paths that still hold at least one asset after this run --
+    skipped assets at plan time, skipped + failed moves at apply time)
+    tightens this further: a folder that was not fully vacated never has
+    its using-statement rewritten, because a `using { /Old/Folder }`
+    line may still be serving references to whatever stayed behind. Even then, a using-line is only
     ever rewritten when the path captured between its braces EXACTLY
     equals a mapped old folder (trailing "/" tolerated) -- this never
     touches a comment or string that merely happens to contain the same
@@ -1423,10 +1438,11 @@ def build_verse_edits(plan_moves, verse_files, content_roots, fix_bare_names=Tru
         if not new_folder or old_folder == new_folder:
             continue
         folder_candidates.setdefault(old_folder, set()).add(new_folder)
+    occupied = occupied_folders or set()
     folder_pairs = [
         (old_folder, next(iter(new_folders)))
         for old_folder, new_folders in folder_candidates.items()
-        if len(new_folders) == 1
+        if len(new_folders) == 1 and old_folder not in occupied
     ]
 
     if not ref_pairs and not folder_pairs:
@@ -1583,9 +1599,12 @@ def apply_verse_edits(edits, log_dir):
 
     Every file is its own try/except -- fail-soft, one bad file (missing,
     permission error, whatever) never aborts the rest of the batch; it is
-    recorded in "failed" instead. Written back with encoding="utf-8" via
-    the same temp-file + os.replace() atomic-write pattern every other
-    writer in this file uses.
+    recorded in "failed" instead. Written back with encoding="utf-8" and
+    newline="" (line endings pass through untouched -- an LF-only file
+    stays LF-only on Windows) via the same temp-file + os.replace()
+    atomic-write pattern every other writer in this file uses. The index
+    also records a SHA-256 of each file as written ("post_hashes"), which
+    undo_verse_edits() uses to refuse to clobber later hand edits.
 
     Returns {"edited": [files], "failed": [(file, err)], "backup_index":
     path_or_None}. `edits` empty -- or holding ONLY entries build_verse_
@@ -1610,6 +1629,10 @@ def apply_verse_edits(edits, log_dir):
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     backup_dir = os.path.join(log_dir, "verse_backup_%s" % ts)
     backups = {}
+    # SHA-256 of each file's content as apply wrote it -- undo_verse_
+    # edits() compares against this to detect (and refuse to clobber)
+    # hand edits made after apply.
+    post_hashes = {}
 
     for file_path in file_order:
         file_edits = by_file[file_path]
@@ -1622,7 +1645,11 @@ def apply_verse_edits(edits, log_dir):
                 os.makedirs(backup_parent)
             shutil.copy2(file_path, backup_path)
 
-            with open(file_path, "r", encoding="utf-8") as f:
+            # newline="" both ways: whatever line endings the file uses
+            # (LF or CRLF) pass through byte-for-byte instead of being
+            # rewritten to the platform default, and the post-apply hash
+            # below is guaranteed to match the exact bytes on disk.
+            with open(file_path, "r", encoding="utf-8", newline="") as f:
                 current_lines = f.readlines()
 
             for e in file_edits:
@@ -1632,12 +1659,15 @@ def apply_verse_edits(edits, log_dir):
                 pattern = _verse_ref_pattern(e["old_ref"])
                 current_lines[idx] = pattern.sub(e["new_ref"], current_lines[idx])
 
+            new_content = "".join(current_lines)
             tmp_path = file_path + ".tmp"
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                f.writelines(current_lines)
+            with open(tmp_path, "w", encoding="utf-8", newline="") as f:
+                f.write(new_content)
             os.replace(tmp_path, file_path)
 
             backups[file_path] = backup_path
+            post_hashes[file_path] = hashlib.sha256(
+                new_content.encode("utf-8")).hexdigest()
             edited.append(file_path)
         except Exception as exc:
             failed.append((file_path, str(exc)))
@@ -1645,7 +1675,8 @@ def apply_verse_edits(edits, log_dir):
     index_path = None
     if backups:
         index_path = os.path.join(log_dir, "sortilege_verse_undo_%s.json" % ts)
-        data = {"version": 1, "created": ts, "backups": backups}
+        data = {"version": 2, "created": ts, "backups": backups,
+                "post_hashes": post_hashes}
         try:
             tmp_path = index_path + ".tmp"
             with open(tmp_path, "w", encoding="utf-8") as f:
@@ -1660,16 +1691,40 @@ def apply_verse_edits(edits, log_dir):
 def undo_verse_edits(backup_index_path):
     """Restore every .verse file recorded in `backup_index_path` (an
     apply_verse_edits()-written sortilege_verse_undo_<ts>.json) from its
-    backup copy. Returns {"restored": [files], "failed": [(file, err)]}.
+    backup copy -- WITHOUT clobbering anything the user changed since
+    apply. Returns {"restored": [files], "failed": [(file, err)],
+    "skipped_modified": [files], "pre_undo_backup_dir": path_or_None}.
+
+    Two safety layers, both protecting the same thing (hand edits made
+    AFTER apply -- e.g. the manual reference fixes the apply report
+    explicitly tells people to make when Build Verse Code still fails):
+
+    1. Skip-if-modified: a v2 index carries a SHA-256 of each file's
+       content exactly as apply wrote it. A file whose current content
+       no longer matches was hand-edited since apply; it is left
+       untouched and reported under "skipped_modified" (with its backup
+       path printed so the user can merge by hand). A v1 index has no
+       hashes, so every file restores -- same as before -- but layer 2
+       still applies.
+    2. Pre-undo snapshot: before ANY restore, every file about to be
+       overwritten is copied to a fresh `verse_pre_undo_<ts>/` folder
+       next to the index, so even a restore the user regrets is
+       recoverable.
 
     Fail-soft, same contract as load_undo_log(): a missing/unreadable
-    index (or a falsy path) returns both lists empty rather than raising.
+    index (or a falsy path) returns all lists empty rather than raising.
     Each file's restore is its own try/except -- one bad file never
-    aborts the rest of the batch."""
+    aborts the rest of the batch. A file that no longer exists on disk
+    is restored from backup (deleting it may itself have been part of
+    what the user wants undone)."""
     restored = []
     failed = []
+    skipped_modified = []
+    pre_undo_dir = None
+    empty = {"restored": restored, "failed": failed,
+             "skipped_modified": skipped_modified, "pre_undo_backup_dir": None}
     if not backup_index_path:
-        return {"restored": restored, "failed": failed}
+        return empty
 
     try:
         with open(backup_index_path, "r", encoding="utf-8") as f:
@@ -1678,16 +1733,51 @@ def undo_verse_edits(backup_index_path):
         _console_warning(
             "Sortilege: could not read Verse backup index %s (%s)." % (
                 backup_index_path, exc))
-        return {"restored": restored, "failed": failed}
+        return empty
+
+    post_hashes = data.get("post_hashes", {})
+    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     for original_path, backup_path in data.get("backups", {}).items():
         try:
+            current_bytes = None
+            if os.path.isfile(original_path):
+                with open(original_path, "rb") as f:
+                    current_bytes = f.read()
+
+            expected = post_hashes.get(original_path)
+            if (current_bytes is not None and expected is not None
+                    and hashlib.sha256(current_bytes).hexdigest() != expected):
+                _console_warning(
+                    "Sortilege: NOT restoring %s -- it was edited after "
+                    "apply. Your current version is untouched; the "
+                    "pre-apply copy is at %s if you want to merge by "
+                    "hand." % (original_path, backup_path))
+                skipped_modified.append(original_path)
+                continue
+
+            if current_bytes is not None:
+                if pre_undo_dir is None:
+                    pre_undo_dir = os.path.join(
+                        os.path.dirname(backup_index_path) or ".",
+                        "verse_pre_undo_%s" % ts)
+                if not os.path.isdir(pre_undo_dir):
+                    os.makedirs(pre_undo_dir)
+                snapshot_path = _verse_backup_path(pre_undo_dir, original_path)
+                snapshot_parent = os.path.dirname(snapshot_path)
+                if snapshot_parent and not os.path.isdir(snapshot_parent):
+                    os.makedirs(snapshot_parent)
+                with open(snapshot_path, "wb") as f:
+                    f.write(current_bytes)
+
             shutil.copy2(backup_path, original_path)
             restored.append(original_path)
         except Exception as exc:
             failed.append((original_path, str(exc)))
 
-    return {"restored": restored, "failed": failed}
+    return {"restored": restored, "failed": failed,
+            "skipped_modified": skipped_modified,
+            "pre_undo_backup_dir": pre_undo_dir}
 
 
 # =====================================================================
@@ -3395,8 +3485,11 @@ def run_undo(undo_log_path, caps, echo_preview=True, status_callback=None):
         _status("Restoring Verse references...")
         tracer.mark("STAGE >>> entering: verse-undo")
         results["verse_undo"] = undo_verse_edits(verse_backup_index)
-        tracer.mark("STAGE <<< done: verse-undo (restored=%d failed=%d)" % (
-            len(results["verse_undo"]["restored"]), len(results["verse_undo"]["failed"])))
+        tracer.mark("STAGE <<< done: verse-undo (restored=%d failed=%d "
+                    "skipped_modified=%d)" % (
+            len(results["verse_undo"]["restored"]),
+            len(results["verse_undo"]["failed"]),
+            len(results["verse_undo"]["skipped_modified"])))
 
     # Sweep the sorted folders the restore just vacated (the reversal
     # plan's SOURCE folders), after redirector cleanup for the same
@@ -3449,21 +3542,51 @@ def undo(undo_log_path, caps):
     for m in reversed_moves:
         _console("  %s -> %s" % (m["path"], m["dest_path"]))
 
+    # If the original apply also rewrote .verse files, say so up front --
+    # the restore is more than just asset moves. (Count is best-effort:
+    # an unreadable index still restores nothing verse-side, and undo_
+    # verse_edits() re-reports precisely at restore time.)
+    verse_file_count = 0
+    if data.get("verse_backup_index"):
+        try:
+            with open(data["verse_backup_index"], "r", encoding="utf-8") as f:
+                verse_file_count = len(json.load(f).get("backups", {}))
+        except Exception:
+            verse_file_count = 0
+    if verse_file_count:
+        _console(
+            "This undo will also restore %d .verse file(s) to their "
+            "pre-apply state. A file you edited AFTER apply is kept as-is "
+            "(skipped, with its backup path printed), and every file is "
+            "snapshotted before restore." % verse_file_count)
+
     if not CONFIG.get("I_UNDERSTAND_THIS_MODIFIES_MY_PROJECT", False):
         _console("Undo blocked: set I_UNDERSTAND_THIS_MODIFIES_MY_PROJECT = True "
                   "in sortilege.py's CONFIG and re-run to actually restore.")
         return {"moved": [], "failed": [], "blocked": "confirm flag off"}
 
     if unreal is not None and caps.editor_dialog:
+        message = "Restore %d move(s)?" % len(reversed_moves)
+        if verse_file_count:
+            message = ("Restore %d move(s) and %d .verse file(s)? "
+                       "(.verse files edited after apply are kept, not "
+                       "reverted)" % (len(reversed_moves), verse_file_count))
         try:
             answer = unreal.EditorDialog.show_message(
-                "Sortilege", "Restore %d move(s)?" % len(reversed_moves),
+                "Sortilege", message,
                 unreal.AppMsgType.YES_NO, default_value="No")
             if str(answer) != str(unreal.AppReturnType.YES):
                 _console("Undo blocked: declined at the confirm dialog.")
                 return {"moved": [], "failed": [], "blocked": "dialog declined"}
         except Exception:
-            pass
+            # Fail CLOSED, exactly like apply's gate 2 (confirmed_to_
+            # execute): if the dialog can't be shown, the user never
+            # confirmed, so nothing is restored. Silently proceeding here
+            # would make undo's gates weaker than apply's.
+            _console_warning(
+                "Sortilege: undo confirm dialog call failed on this "
+                "build; treating the restore as not confirmed.")
+            return {"moved": [], "failed": [], "blocked": "dialog unavailable"}
 
     # Preview already printed above (before the gates, so a blocked run
     # still shows exactly what it WOULD have restored) -- don't echo it
@@ -3982,9 +4105,22 @@ def run_apply(plan, caps, extra_progress=None, status_callback=None):
         verse_sample_paths = [mv["dest_path"] for mv in moved_as_moves][:5]
         verse_dir = resolve_verse_search_dir(CONFIG, sample_asset_paths=verse_sample_paths)
         verse_files = find_verse_files(verse_dir)
+        # Folders still holding anything after this run: skipped assets
+        # (never touched) plus any move that FAILED (its asset is still
+        # sitting at the old path). Their using-statements must never be
+        # rewritten -- see build_verse_edits().
+        occupied = {
+            s["path"].rsplit("/", 1)[0]
+            for s in plan.get("skips", []) if "/" in s.get("path", "")
+        }
+        occupied |= {
+            old.rsplit("/", 1)[0]
+            for old, _new, _err in results.get("failed", []) if "/" in old
+        }
         verse_edit_list = build_verse_edits(
             moved_as_moves, verse_files, discover_content_roots(),
-            fix_bare_names=CONFIG.get("FIX_VERSE_BARE_NAMES", True))
+            fix_bare_names=CONFIG.get("FIX_VERSE_BARE_NAMES", True),
+            occupied_folders=occupied)
         verse_apply_result = apply_verse_edits(verse_edit_list, log_dir)
         verse_apply_result["edit_count"] = len(
             [e for e in verse_edit_list if not e.get("skipped")])

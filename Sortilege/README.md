@@ -22,6 +22,14 @@ This README is written for someone who does not write code. Every technical term
 
 ---
 
+## Requirements
+
+- UEFN with the **Python Editor Script Plugin** enabled (setup below) -- Sortilege runs on the Python that ships inside UEFN, so there is nothing separate to install.
+- The optional preview window uses tkinter (also bundled, when available); if it isn't, Sortilege automatically falls back to the plain console preview.
+- `pytest` is only needed if you want to run the test suite (`requirements.txt` has the details); it is never needed to use the tool.
+
+---
+
 ## Before you start
 
 **Back up your project first.** Either make a copy of your project folder, or use Unreal Revision Control (Epic's built-in version control, similar to a save-history for your project) if you already have it set up. Epic themselves recommend pairing any Python scripting with source control, specifically in case a script makes a mistake. Sortilege has been tested carefully, but you should never run a tool that moves your assets around without a safety net.
@@ -281,6 +289,11 @@ py "C:/path/to/sortilege.py" undo
 
 This goes through the exact same two safety gates as applying: the `I_UNDERSTAND_THIS_MODIFIES_MY_PROJECT` flag must be `True`, and (if your build supports it) a Yes/No confirmation dialog appears before anything is restored. It prints exactly what it is about to restore first, so you can read it over before confirming.
 
+**If the run also rewrote your Verse code**, undo restores those `.verse` files to their pre-apply state -- with two protections for anything you changed yourself in the meantime:
+
+- A `.verse` file you edited **after** the apply (for example, hand-fixing a reference the tool could not) is **not** reverted. It is skipped, kept exactly as you have it, and the location of its pre-apply backup copy is printed so you can merge by hand if you want to.
+- Before restoring anything, the current version of every affected `.verse` file is snapshotted to a `verse_pre_undo_<timestamp>` folder next to the log files, so even a restore you regret can be recovered.
+
 **Why not just use UEFN's normal Ctrl+Z?** Because the editor's built-in Undo History is not reliable across the kind of asset move/rename operations this tool performs; Epic's own documentation notes some of these operations can clear the undo history entirely. That is exactly why Sortilege keeps its own separate undo file on disk instead of relying on the editor's undo.
 
 If you have run Sortilege more than once and want to undo a specific earlier run instead of the latest one, you can point it directly at that run's undo file:
@@ -401,4 +414,4 @@ This prints your Python version, your project's content root, a list of which op
 
 **Can I change the categories themselves, like what counts as an "Animations" asset?** Yes, that is the `CLASSIFICATION` section in CONFIG, immediately below FOLDER_MAP. It maps each engine asset type to a category. Anything not listed there falls back to the "Other" folder by default (or gets skipped entirely if you turn on `STRICT_MODE`).
 
-**Does it delete anything?** Only the small leftover redirector "pointer" files after a confirmed-safe cleanup check, and only if `CLEAN_REDIRECTORS` is left on (the default). Your real assets are moved, never deleted. If you also turn on `CLEAN_EMPTY_FOLDERS`, folders left completely empty after sorting are removed too; this is off by default.
+**Does it delete anything?** Only the small leftover redirector "pointer" files after a confirmed-safe cleanup check, and only if `CLEAN_REDIRECTORS` is left on (the default). Your real assets are moved, never deleted. Folders left completely empty after sorting are also removed if `CLEAN_EMPTY_FOLDERS` is left on (it is **on by default**; set it to `False` in CONFIG to keep every folder). A folder still holding anything at all is always kept.
