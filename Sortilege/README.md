@@ -415,3 +415,9 @@ This prints your Python version, your project's content root, a list of which op
 **Can I change the categories themselves, like what counts as an "Animations" asset?** Yes, that is the `CLASSIFICATION` section in CONFIG, immediately below FOLDER_MAP. It maps each engine asset type to a category. Anything not listed there falls back to the "Other" folder by default (or gets skipped entirely if you turn on `STRICT_MODE`).
 
 **Does it delete anything?** Only the small leftover redirector "pointer" files after a confirmed-safe cleanup check, and only if `CLEAN_REDIRECTORS` is left on (the default). Your real assets are moved, never deleted. Folders left completely empty after sorting are also removed if `CLEAN_EMPTY_FOLDERS` is left on (it is **on by default**; set it to `False` in CONFIG to keep every folder). A folder still holding anything at all is always kept.
+
+---
+
+## Credits
+
+Sortilege was created by **[mangoUEFN](https://github.com/mangouefn)**, with improvements and maintenance by **PineFruit**. Released as part of the [UEFNiVERSE Free-Python](https://github.com/UEFNiVERSE/Free-Python) collection.

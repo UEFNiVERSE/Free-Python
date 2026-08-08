@@ -18,9 +18,9 @@ Free-Python is the Python-side companion to [Free-Verse](https://github.com/UEFN
 
 ## Tools
 
-| Tool | What It Does | Release |
-|---|---|---|
-| [Sortilege](Sortilege/) | Sorts your Content Drawer into tidy category folders — dry-run preview by default, full undo | v1.0.0 |
+| Tool | What It Does | Author(s) | Release |
+|---|---|---|---|
+| [Sortilege](Sortilege/) | Sorts your Content Drawer into tidy category folders — dry-run preview by default, full undo | mangoUEFN, PineFruit | v1.0.0 |
 
 Each tool folder has its own README with full setup, configuration, and examples.
 
@@ -54,7 +54,7 @@ We welcome contributions from the UEFN community!
 
 ## Support
 
-**Developers:** PineFruit, LastMade
+**Maintainer:** PineFruit — per-tool authors are listed in the [Tools](#tools) table
 **Organization:** Chartis / UEFNiVERSE
 **License:** Open-Source (see LICENSE)
 
