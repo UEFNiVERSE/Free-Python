@@ -1,0 +1,114 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for UEFNiVERSE
+title: "[FEATURE] "
+labels: ["enhancement", "needs-review"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Help us understand your idea by filling out the sections below.
+
+  - type: dropdown
+    id: feature-type
+    attributes:
+      label: Feature Type
+      description: What type of feature are you requesting?
+      options:
+        - New Tool
+        - Enhancement to existing tool
+        - Documentation improvement
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected-tool
+    attributes:
+      label: Related Tool (if applicable)
+      description: Which tool is this feature for?
+      options:
+        # Add tools here as they are released
+        - New tool concept
+        - Multiple tools
+        - Not applicable
+    validations:
+      required: false
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem does this feature solve? What's currently missing, manual, or difficult in your UEFN workflow?
+      placeholder: "Currently there's no way to batch-rename assets across a UEFN project..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How would this feature work? Be as detailed as possible.
+      placeholder: |
+        Add a new tool that:
+        - Scans the project for assets matching a pattern
+        - Previews the proposed renames
+        - Applies them safely with an undo file
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: Use Cases
+      description: Provide real-world examples of how this would be used
+      placeholder: |
+        1. Rename all Device assets to follow a naming convention
+        2. Migrate a project to a new folder structure
+        3. Clean up after importing an asset pack
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other approaches have you thought about?
+      placeholder: |
+        - Renaming manually in UEFN (too slow for large projects)
+        - One-off scripts (defeats reusability)
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: Mockups / Examples
+      description: Add mockups, example commands/output, or examples from other tools (drag and drop images)
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: How important is this to you?
+      description: Help us prioritize features
+      options:
+        - Nice to have
+        - Would improve my workflow
+        - Critical for my project
+        - Blocking my development
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Anything else we should know?
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched existing issues and discussions
+          required: true
+        - label: I would be willing to help implement or test this feature
+          required: false

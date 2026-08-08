@@ -1,0 +1,106 @@
+name: Bug Report
+description: Report a bug or issue with a UEFNiVERSE Python tool
+title: "[BUG] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the sections below to help us reproduce and fix the issue.
+
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Which tool is affected?
+      description: Select the tool experiencing the issue
+      options:
+        # Add tools here as they are released
+        - General / Setup
+        - Multiple tools
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python Version
+      description: Output of `python --version`
+      placeholder: "Python 3.12.1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: Clear and concise description of the bug
+      placeholder: "The tool crashes when the project folder contains spaces in the path..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Detailed steps to reproduce the behavior
+      placeholder: |
+        1. Run the tool against a UEFN project
+        2. Use a project path containing spaces
+        3. Tool exits with an error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should happen?
+      placeholder: "The tool should handle paths with spaces correctly..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happens?
+      placeholder: "The tool raises FileNotFoundError..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console Output / Error Messages
+      description: Paste relevant console output, tracebacks, or error messages (if any)
+      placeholder: |
+        Traceback (most recent call last):
+          File "tool.py", line 42, in <module>
+            ...
+      render: shell
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Add screenshots or videos if applicable (drag and drop)
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other information that might help (OS, workarounds, when it started, etc.)
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched existing issues to ensure this hasn't been reported
+          required: true
+        - label: I have included the full error output / traceback
+          required: false
+        - label: I am using the latest version of the tool
+          required: false

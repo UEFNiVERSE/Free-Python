@@ -1,0 +1,71 @@
+name: Question / Help
+description: Ask a question or get help with UEFNiVERSE Python tools
+title: "[QUESTION] "
+labels: ["question", "help-wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Need help with UEFNiVERSE? Ask your question below!
+
+        **Tip:** For quick answers, check the [Documentation](https://github.com/UEFNiVERSE/Free-Python/blob/main/README.md) or join our [Discord](https://discord.gg/UEFNiVERSE).
+
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Which tool is this about?
+      description: Select the tool you need help with
+      options:
+        # Add tools here as they are released
+        - General / Setup
+        - Multiple tools
+        - Not sure
+    validations:
+      required: false
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: What do you need help with?
+      placeholder: "How do I point the tool at my UEFN project folder? I've followed the README but..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What have you tried?
+      description: What steps have you already taken to solve this?
+      placeholder: |
+        1. Read the tool's README
+        2. Installed the requirements
+        3. Ran the tool
+        4. Still not working...
+
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Current Configuration
+      description: Share relevant settings, commands, or environment details (if applicable)
+      placeholder: |
+        - Python 3.12.1 on Windows 11
+        - Command used: python tool.py --project "MyIsland"
+      render: text
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Screenshots, error messages, or anything else that might help
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      description: Please confirm
+      options:
+        - label: I have read the tool's README
+          required: true
+        - label: I have searched existing issues for similar questions
+          required: true
